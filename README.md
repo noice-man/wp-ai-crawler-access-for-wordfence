@@ -1,0 +1,1 @@
+# wp-ai-crawler-access-for-wordfence
