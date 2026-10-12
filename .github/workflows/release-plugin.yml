@@ -1,0 +1,45 @@
+name: Release WordPress Plugin
+on:
+  push:
+    branches: [main]
+    paths: ["ai-crawler-access-for-wordfence.php", "includes/**", "readme.txt", ".github/workflows/release-plugin.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify package
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -nE 's/^ \* Version: ([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' ai-crawler-access-for-wordfence.php | head -n1)
+          test -n "$VERSION"
+          grep -Fqx "Stable tag: $VERSION" readme.txt
+          test -f includes/wpr-updates-client.php
+          find . -name '*.php' -print0 | xargs -0 -n1 php -l
+          php tests/wpr-compat-smoke.php
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then exit 0; fi
+          ROOT="/tmp/wpr-zip/ai-crawler-access-for-wordfence"
+          mkdir -p "$ROOT"
+          cp ai-crawler-access-for-wordfence.php readme.txt LICENSE "$ROOT/"
+          cp -r includes "$ROOT/"
+          cd /tmp/wpr-zip
+          zip -qr "$GITHUB_WORKSPACE/ai-crawler-access-for-wordfence-v$VERSION.zip" ai-crawler-access-for-wordfence
+          cd "$GITHUB_WORKSPACE"
+          unzip -tq "ai-crawler-access-for-wordfence-v$VERSION.zip"
+          gh release create "$TAG" "ai-crawler-access-for-wordfence-v$VERSION.zip" --target "$GITHUB_SHA" --title "AI Crawler Access for Wordfence v$VERSION" --generate-notes
